@@ -23,7 +23,7 @@ const VRMAvatar = ({ avatar, ...props }) => {
       loader.register((parser) => {
         return new VRMLoaderPlugin(parser);
       });
-    }
+    },
   );
 
   // Mixamoアニメーションを読み込む
@@ -39,6 +39,7 @@ const VRMAvatar = ({ avatar, ...props }) => {
     clip.name = "Swing Dancing";
     return clip;
   }, [assetA, currentVrm]);
+  
   const animationClipB = useMemo(() => {
     const clip = remapMixamoAnimationToVrm(currentVrm, assetB);
     clip.name = "Thriller Part 2";
@@ -53,7 +54,7 @@ const VRMAvatar = ({ avatar, ...props }) => {
   // actions
   const { actions } = useAnimations(
     [animationClipA, animationClipB, animationClipC],
-    currentVrm.scene
+    currentVrm.scene,
   );
 
   // 表情アニメーションを有効にする
@@ -61,15 +62,16 @@ const VRMAvatar = ({ avatar, ...props }) => {
     const vrm = userData.vrm; //VRM専用のAPI
 
     /* 
+      console.log(vrm);
       expressionManager：表情制御関連はここら辺を見ればok
     */
 
-    // calling these functions greatly improves the performance
+    // パフォーマンス改善処理
     VRMUtils.removeUnnecessaryVertices(scene); //不要な頂点を削除する
     VRMUtils.combineSkeletons(scene); //スケルトンを統合する
     VRMUtils.combineMorphs(vrm); //モーフターゲットを整理する(似たような表情の動きをまとめるイメージ)
 
-    // Disable frustum culling
+    // カリングを無効にする
     vrm.scene.traverse((obj) => {
       obj.frustumCulled = false; //frustumCulled:カリングを有効にするか否か(カメラに写っていない物体は描画しない)
     });
@@ -77,25 +79,29 @@ const VRMAvatar = ({ avatar, ...props }) => {
 
   // Holisticの解析結果を取得
   const setResultsCallback = useVideoRecognition(
-    (state) => state.setResultsCallback
+    (state) => state.setResultsCallback,
   );
   // videoへの参照を取得
   const videoElement = useVideoRecognition((state) => state.videoElement);
 
-  //顔
-  const riggedFace = useRef();
-  //体
-  const riggedPose = useRef();
-  //左手
-  const riggedLeftHand = useRef();
-  //右手
-  const riggedRightHand = useRef();
+  const riggedFace = useRef(); //顔
+  const riggedPose = useRef(); //体
+  const riggedLeftHand = useRef(); //左手
+  const riggedRightHand = useRef(); //右手
 
+  const camera = useThree((state) => state.camera);
+  const lookAtDestination = useRef(new Vector3(0, 0, 0));
+  const lookAtTarget = useRef();
+
+  // mediapipeの解析結果を受け取るcb関数
   const resultsCallback = useCallback(
     (results) => {
       if (!videoElement || !currentVrm) {
         return;
       }
+
+      // solve(kalidokit):MediaPipeの生の座標データを、3Dアバターが使いやすい回転角度に変換する関数
+
       // 顔
       if (results.faceLandmarks) {
         riggedFace.current = Face.solve(results.faceLandmarks, {
@@ -118,15 +124,16 @@ const VRMAvatar = ({ avatar, ...props }) => {
       if (results.leftHandLandmarks) {
         riggedRightHand.current = Hand.solve(
           results.leftHandLandmarks,
-          "Right"
+          "Right",
         );
       }
+
       // 左手（ミラー効果のため左右を入れ替え）
       if (results.rightHandLandmarks) {
         riggedLeftHand.current = Hand.solve(results.rightHandLandmarks, "Left");
       }
     },
-    [videoElement, currentVrm]
+    [videoElement, currentVrm],
   );
 
   useEffect(() => {
@@ -146,7 +153,7 @@ const VRMAvatar = ({ avatar, ...props }) => {
     sad,
     happy,
     animation,
-  } = useControls("VRM", {
+  } = useControls("VRMAvatar", {
     aa: { value: 0, min: 0, max: 1 },
     ih: { value: 0, min: 0, max: 1 },
     ee: { value: 0, min: 0, max: 1 },
@@ -178,26 +185,27 @@ const VRMAvatar = ({ avatar, ...props }) => {
   const lerpExpression = (name, value, lerpFactor) => {
     userData.vrm.expressionManager.setValue(
       name,
-      lerp(userData.vrm.expressionManager.getValue(name), value, lerpFactor)
+      lerp(userData.vrm.expressionManager.getValue(name), value, lerpFactor),
     );
   };
 
   // ボーンをオイラー角で回転させる関数
-  // boneName: VRMのボーン名, value: {x,y,z}の回転値, slerpFactor: 補間係数, flip: 各軸の反転
   const rotateBone = (
-    boneName,
-    value,
-    slerpFactor,
+    boneName, //vrmのボーン名
+    value, //{x,y,z}の回転値(オイラー角)
+    slerpFactor, //保管係数
     flip = {
+      //各軸の反転
       x: 1,
       y: 1,
       z: 1,
-    }
+    },
   ) => {
+
     const bone = userData.vrm.humanoid.getNormalizedBoneNode(boneName);
     if (!bone) {
       console.warn(
-        `Bone ${boneName} not found in VRM humanoid. Check the bone name.`
+        `Bone ${boneName} not found in VRM humanoid. Check the bone name.`,
       );
       return;
     }
@@ -207,9 +215,6 @@ const VRMAvatar = ({ avatar, ...props }) => {
     bone.quaternion.slerp(tmpQuat, slerpFactor);
   };
 
-  const lookAtDestination = useRef(new Vector3(0, 0, 0));
-  const camera = useThree((state) => state.camera);
-  const lookAtTarget = useRef();
   useEffect(() => {
     lookAtTarget.current = new Object3D();
     camera.add(lookAtTarget.current);
@@ -298,11 +303,11 @@ const VRMAvatar = ({ avatar, ...props }) => {
           lookAtDestination.current.set(
             -2 * riggedFace.current.pupil.x,
             2 * riggedFace.current.pupil.y,
-            0
+            0,
           );
           lookAtTarget.current.position.lerp(
             lookAtDestination.current,
-            delta * 5
+            delta * 5,
           );
         }
 
@@ -346,82 +351,82 @@ const VRMAvatar = ({ avatar, ...props }) => {
             y: riggedLeftHand.current.LeftWrist.y,
             x: riggedLeftHand.current.LeftWrist.x,
           },
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftRingProximal",
           riggedLeftHand.current.LeftRingProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftRingIntermediate",
           riggedLeftHand.current.LeftRingIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftRingDistal",
           riggedLeftHand.current.LeftRingDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftIndexProximal",
           riggedLeftHand.current.LeftIndexProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftIndexIntermediate",
           riggedLeftHand.current.LeftIndexIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftIndexDistal",
           riggedLeftHand.current.LeftIndexDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftMiddleProximal",
           riggedLeftHand.current.LeftMiddleProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftMiddleIntermediate",
           riggedLeftHand.current.LeftMiddleIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftMiddleDistal",
           riggedLeftHand.current.LeftMiddleDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftThumbProximal",
           riggedLeftHand.current.LeftThumbProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftThumbMetacarpal",
           riggedLeftHand.current.LeftThumbIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftThumbDistal",
           riggedLeftHand.current.LeftThumbDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftLittleProximal",
           riggedLeftHand.current.LeftLittleProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftLittleIntermediate",
           riggedLeftHand.current.LeftLittleIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "leftLittleDistal",
           riggedLeftHand.current.LeftLittleDistal,
-          delta * 12
+          delta * 12,
         );
       }
 
@@ -433,82 +438,82 @@ const VRMAvatar = ({ avatar, ...props }) => {
             y: riggedRightHand.current.RightWrist.y,
             x: riggedRightHand.current.RightWrist.x,
           },
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightRingProximal",
           riggedRightHand.current.RightRingProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightRingIntermediate",
           riggedRightHand.current.RightRingIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightRingDistal",
           riggedRightHand.current.RightRingDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightIndexProximal",
           riggedRightHand.current.RightIndexProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightIndexIntermediate",
           riggedRightHand.current.RightIndexIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightIndexDistal",
           riggedRightHand.current.RightIndexDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightMiddleProximal",
           riggedRightHand.current.RightMiddleProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightMiddleIntermediate",
           riggedRightHand.current.RightMiddleIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightMiddleDistal",
           riggedRightHand.current.RightMiddleDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightThumbProximal",
           riggedRightHand.current.RightThumbProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightThumbMetacarpal",
           riggedRightHand.current.RightThumbIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightThumbDistal",
           riggedRightHand.current.RightThumbDistal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightLittleProximal",
           riggedRightHand.current.RightLittleProximal,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightLittleIntermediate",
           riggedRightHand.current.RightLittleIntermediate,
-          delta * 12
+          delta * 12,
         );
         rotateBone(
           "rightLittleDistal",
           riggedRightHand.current.RightLittleDistal,
-          delta * 12
+          delta * 12,
         );
       }
     }

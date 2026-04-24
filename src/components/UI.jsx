@@ -12,7 +12,7 @@ export const UI = () => {
       </div>
       <div className="absolute left-4 md:left-15 -translate-x-1/2 -rotate-90 flex items-center gap-4 animation-delay-1500 animate-fade-in-down opacity-0">
         <div className="w-20 h-px bg-white/60"></div>
-        <p className="text-white/60 text-xs">🎙️ Become a pop star ⭐️</p>
+        {/* <p className="text-white/60 text-xs">🎙️ Become a pop star ⭐️</p> */}
       </div>
     </section>
   );

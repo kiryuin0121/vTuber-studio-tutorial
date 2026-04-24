@@ -9,7 +9,7 @@ export const Experience = () => {
   // LevaのGUIでアバターを切り替える。
   const { avatar } = useControls("VRM", {
     avatar: {
-      value: "3859814441197244330.vrm",
+      value: "262410318834873893.vrm",
       options: [
         "262410318834873893.vrm",
         "3859814441197244330.vrm",

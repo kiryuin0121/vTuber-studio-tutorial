@@ -16,7 +16,7 @@ export const CameraWidget = () => {
   const videoElement = useRef();
   const drawCanvas = useRef();
 
-  // videoタグの参照登録用関数
+  // video(カメラの映像の描画先）の参照登録用関数
   const setVideoElement = useVideoRecognition((state) => state.setVideoElement);
 
   // 骨格を描画する(点と線)
@@ -79,6 +79,18 @@ export const CameraWidget = () => {
   };
 
   // カメラの映像解析＆プレビューを描画
+  /* 
+  Camera.start()
+   ↓Webカメラ取得
+   ↓
+videoに描画
+   ↓
+onFrameが毎フレーム実行
+   ↓
+holistic.send()
+   ↓
+onResults()
+  */
   useEffect(() => {
     if (!start) {
       setVideoElement(null);
@@ -89,33 +101,37 @@ export const CameraWidget = () => {
     if (useVideoRecognition.getState().videoElement) {
       return;
     }
+
     // videoタグへの参照をGSに登録する
     setVideoElement(videoElement.current);
 
     // mediapipe(holistic)インスタンスの生成
     const holistic = new Holistic({
       locateFile: (file) => {
+        // WebAssemblyファイル(.wasm)
         return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1635989137/${file}`;
       },
     });
-    // mediapipe(holistic)の検出精度の設定
+    // mediapipe(holistic)の設定
     holistic.setOptions({
-      modelComplexity: 1, // モデルの複雑さ（0〜2、高いほど精度↑・速度↓）
-      smoothLandmarks: true, // 骨格がカクカクしないよう滑らかにする
-      minDetectionConfidence: 0.7, // この確率以上でないと「検出した」とみなさない
-      minTrackingConfidence: 0.7, // この確率以上でないとトラッキングを継続しない
-      refineFaceLandmarks: true, // 顔のランドマークをより詳細に検出（瞳など）
+      modelComplexity: 1.5, // モデルの複雑さ（0〜2）
+      smoothLandmarks: true, // 顔、体、腕のランドマークのブレを防止
+      minDetectionConfidence: 0.7, //初回検出の信頼度しきい値
+      minTrackingConfidence: 0.7, //トラッキング継続の信頼度しきい値
+      refineFaceLandmarks: true, // 顔のランドマークをより詳細に検出（瞳、唇など）
+      selfieMode: false, //フロントカメラか(左右反転される)
     });
 
-    // mediapipe(holistic)の解析結果を描画する処理
+    // mediapipe(holistic)の推論（画像解析）が1フレーム分終わるたびに呼び出され、その結果データを受け取る。解析結果を処理するロジックを書く(描画、VRM同期処理など)
     holistic.onResults((results) => {
+      // 解析結果をCanvasに描画
       drawResults(results);
       // 解析結果をVRMの動きに同期させる
       useVideoRecognition.getState().resultsCallback?.(results);
     });
 
-    //カメラを起動して毎フレーム解析する
     const camera = new Camera(videoElement.current, {
+      // 毎フレームmediapipe/holisticに生データを送信する
       onFrame: async () => {
         await holistic.send({ image: videoElement.current });
       },
